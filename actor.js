@@ -15,12 +15,10 @@ class Actor {
     this.context = context;
     this.context.onmessage = this.receive;
     // methods not accessible from our peer
-    this.blacklist = ['send', 'receive'];
-
-    this.peer = {
-      initMethods: (methods) => {
-      }
-    };
+    this.blacklist = ['send', 'receive', 'initPeerAcks', 'buildPeerProxy'];
+    let initialMethods = ['initPeer'];
+    this.peer = this.buildPeerProxy(initialMethods)
+    this.initPeerMethods(initialMethods);
   }
   /**
    * Wraps context's postMessage and returns a Promise to be resolved
@@ -80,32 +78,44 @@ class Actor {
       this.context.postMessage(['ack', ackId, returnVal]);
     }
   }
+
+  /**
+   * returns a new peer object which proxies method accesses
+   * to postMessage calls on the peer
+   */
+  buildPeerProxy(methods) {
+    let peer = {};
+    let handlers = {
+      get: (target, property, receiver) => {
+        console.log("called " + property);
+        if (methods.indexOf(property) !== -1) {
+          return () => {
+            let args = Array.prototype.slice.apply(arguments, 0, arguments.length);
+            return this.send(property, args)
+          }
+        }
+        return undefined;
+      }
+    }
+    let proxy = new Proxy(peer, handlers);
+    return proxy;
+  }
+
+  initPeerAcks(methods) {
+    // init the peerMethodAck's
+    methods.forEach(methodName => {
+      this.peerMethodAckCounters[methodName] = 0;
+      this.peerMethodAckPromises[methodName] = {};
+    });
+  }
+
   /**
    * Initialize communication with the peer for the first time
    * @param methods {Array<string>} list of valid peer methods to call
    * @returns {Array<string>} list of valid callable methods on this
    */
   initPeer(methods) {
-    // proxy accesses to this.peer to act like methods
-    let handlers = {
-      get: (target, prop, receiver) => {
-        console.log("called " + prop);
-        if (target.indexOf(prop) !== -1) {
-          return function() {
-            let args = Array.prototype.slice.apply(arguments, 0, arguments.length);
-            args.unshift(pid);
-            return this.send(pid, prop, args)
-          }
-        }
-        return undefined;
-      }
-    }
-    this.peer = new Proxy(methods, handlers);
-    // init the peerMethodAck's
-    methods.forEach(methodName => {
-      this.peerMethodAckCounters[methodName] = 0;
-      this.peerMethodAckPromises[methodName] = {};
-    });
+    this.peer = this.buildPeerProxy(methods);
     // only one call to initPeer allowed.
     this.blacklist.push('initPeer');
     this.isInitialized = true;
@@ -123,10 +133,10 @@ class WorkerActor extends Actor {
     super.constructor(this.worker)
     this.blacklist.concat(["terminate", "close"])
   }
-  terminate: function() {
+  terminate {
     this.worker.terminate();
   }
-  close: function() {
+  close {
     this.worker.close()
   }
 }
