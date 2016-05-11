@@ -129,15 +129,15 @@ class Actor {
 
 class WorkerActor extends Actor {
   constructor(script) {
-    this.worker = new Worker(script);
-    super.constructor(this.worker)
+    let worker = new Worker(script);
+    super.constructor(worker)
     this.blacklist.concat(["terminate", "close"])
   }
   terminate {
-    this.worker.terminate();
+    this.context.terminate();
   }
   close {
-    this.worker.close()
+    this.context.close()
   }
 }
 
