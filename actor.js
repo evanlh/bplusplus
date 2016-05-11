@@ -3,6 +3,8 @@
  * @description Implements Actor layer over WebWorker's postMessage
  * and onmessage to make messaging between parents and workers
  * look like regular method calls between objects.
+ * @example
+ *
  */
 
 class Actor {
@@ -26,23 +28,30 @@ class Actor {
    */
   send(methodName, args) {
     // TODO validate methodName? not necessary if send is private?
-    var counter = ++this.peerMethodAckCounters[methodName];
-    var ackId = methodName + "#" + counter;
+    let counter = ++this.peerMethodAckCounters[methodName];
+    let ackId = methodName + "#" + counter;
     args.unshift(methodName);
     args.unshift(ackId);
-    var p = new Promise((resolve, reject) => {
+    let ackPromise = new Promise((resolve, reject) => {
+      // this is UBER EW... Maybe a different future primitive?
       this.peerMethodAckPromises[ackId] = [resolve, reject];
-      // this is kindof ew...
     });
     this.context.postMessage(args);
-    return p;
+    return ackPromise;
   }
   /**
    * Handles the 'ack' reply from our peer and resolves send's Promise
    */
   ack(ackId, value) {
-    var resolve = this.peerMethodAckPromises[ackId][0];
-    resolve(value);
+    let resolve = this.peerMethodAckPromises[ackId][0],
+        reject = this.peerMethodAckPromises[ackId][1];
+
+    if (value instanceof Error){
+      reject(value);
+    }
+    else {
+      resolve(value);
+    }
     this.peerMethodAckPromises[ackId] = undefined;
   }
   /**
@@ -53,17 +62,17 @@ class Actor {
     if (!e || !Array.isArray(e.data)) {
       throw new TypeError("Received unknown message", e);
     }
-    var methodName = e.data.shift();
-    var ackId = e.data.shift();
+    let methodName = e.data.shift();
+    let ackId = e.data.shift();
     if (!this[methodName] || typeof this[methodName] !== 'function') {
       throw new TypeError(methodName + ' is not a function', e);
     }
-    var returnVal = this[methodName].apply(this, e.data);
+    let returnVal = this[methodName].apply(this, e.data);
     // if we just dispatched to 'ack' we're done
     if (methodName == 'ack') return returnVal;
     // otherwise we need to ack the sender
     if (returnVal instanceof Promise) {
-      returnVal.then((val){
+      returnVal.then(val => {
         this.context.postMessage(['ack', ackId, val]);
       })
     }
@@ -78,12 +87,12 @@ class Actor {
    */
   initPeer(methods) {
     // proxy accesses to this.peer to act like methods
-    var handlers = {
+    let handlers = {
       get: (target, prop, receiver) => {
         console.log("called " + prop);
         if (target.indexOf(prop) !== -1) {
           return function() {
-            var args = Array.prototype.slice.apply(arguments, 0, arguments.length);
+            let args = Array.prototype.slice.apply(arguments, 0, arguments.length);
             args.unshift(pid);
             return this.send(pid, prop, args)
           }
@@ -93,7 +102,7 @@ class Actor {
     }
     this.peer = new Proxy(methods, handlers);
     // init the peerMethodAck's
-    methods.forEach((methodName) => {
+    methods.forEach(methodName => {
       this.peerMethodAckCounters[methodName] = 0;
       this.peerMethodAckPromises[methodName] = {};
     });
@@ -101,7 +110,7 @@ class Actor {
     this.blacklist.push('initPeer');
     this.isInitialized = true;
     // return our methods to sender
-    var myMethods = Object.keys(this).filter((k) => {
+    let myMethods = Object.keys(this).filter(k => {
       return this.blacklist.indexOf(k) === -1;
     });
     return myMethods;
