@@ -1,18 +1,28 @@
 const viewport = document.getElementById('name');
+//import actor;
+// class WorkerActor extends Actor {
+//   constructor(script) {
+//     this.worker = new Worker(script);
+    
+//   }
+// }
 
 var BplusPlusController = {
   _worker: null,
   initWorker: function(logfile) {
     console.log(" logfile " , logfile.substring(0, 400));
     this._worker = new Worker("logparser.js");
-    this._worker.postMessage(['content', logfile]);
+    this._worker.postMessage(['init', logfile]);
     this._worker.onmessage = this.onWorkerMessage.bind(this);
   },
+  jsonToWidget: function(json, maxKeys) {
+    maxKeys = maxKeys || 100;
+  },
   onWorkerMessage: function(e) {
-    console.log(e);
+    console.warn(e);
   },
   fetch: function (filename) {
-    var promise = new Promise((resolve, reject) =>{
+    var promise = new Promise((resolve, reject) => {
       var request = new XMLHttpRequest();
       request.open('GET', '/data/' + filename, true);
       request.onload = function() {
