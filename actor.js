@@ -9,31 +9,45 @@
 
 class Actor {
   constructor(context) {
-    this.peerMethodAckCounters = {}; // methodName => int
-    this.peerMethodAckPromises = {}; // methodName#counter => [resolve, reject]
+    this._peerMethodAckCounters = {}; // methodName => int
+    this._peerMethodAckPromises = {}; // methodName#counter => [resolve, reject]
     this.isInitialized = false;
     this.context = context;
-    this.context.onmessage = this.receive;
+    this.context.onmessage = this.receive.bind(this);
     // methods not accessible from our peer
     this.blacklist = ['send', 'receive', 'initPeerAcks', 'buildPeerProxy'];
     let initialMethods = ['initPeer'];
     this.peer = this.buildPeerProxy(initialMethods)
-    this.initPeerMethods(initialMethods);
+    this.initPeerAcks(initialMethods);
   }
+
+  start() {
+	return this.send('initPeer', this.getMyMethods());
+  }
+
   /**
    * Wraps context's postMessage and returns a Promise to be resolved
    * with by the ack from our peer.
    */
   send(methodName, args) {
     // TODO validate methodName? not necessary if send is private?
-    let counter = ++this.peerMethodAckCounters[methodName];
+    let counter = ++this._peerMethodAckCounters[methodName];
     let ackId = methodName + "#" + counter;
-    args.unshift(methodName);
     args.unshift(ackId);
+    args.unshift(methodName);
     let ackPromise = new Promise((resolve, reject) => {
       // this is UBER EW... Maybe a different future primitive?
-      this.peerMethodAckPromises[ackId] = [resolve, reject];
+      this._peerMethodAckPromises[ackId] = [resolve, reject];
     });
+
+	if (methodName === 'initPeer') {
+	  ackPromise.then((methodResponse) => {
+		this.peer = this.buildPeerProxy(methodResponse);
+		this.initPeerAcks(methodResponse);
+	  }).catch((e) => {
+		console.error("Failed to initialize peer-- ", e);
+	  });
+	}
     this.context.postMessage(args);
     return ackPromise;
   }
@@ -41,8 +55,8 @@ class Actor {
    * Handles the 'ack' reply from our peer and resolves send's Promise
    */
   ack(ackId, value) {
-    let resolve = this.peerMethodAckPromises[ackId][0],
-        reject = this.peerMethodAckPromises[ackId][1];
+    let resolve = this._peerMethodAckPromises[ackId][0],
+    reject = this._peerMethodAckPromises[ackId][1];
 
     if (value instanceof Error){
       reject(value);
@@ -50,7 +64,7 @@ class Actor {
     else {
       resolve(value);
     }
-    this.peerMethodAckPromises[ackId] = undefined;
+    this._peerMethodAckPromises[ackId] = undefined;
   }
   /**
    * Handler for context's onmessage event, dispatches to the appropriate
@@ -61,14 +75,16 @@ class Actor {
       throw new TypeError("Received unknown message", e);
     }
     let methodName = e.data.shift();
-    let ackId = e.data.shift();
     if (!this[methodName] || typeof this[methodName] !== 'function') {
       throw new TypeError(methodName + ' is not a function', e);
     }
-    let returnVal = this[methodName].apply(this, e.data);
-    // if we just dispatched to 'ack' we're done
-    if (methodName == 'ack') return returnVal;
+	// if we're dispatching to ack we're done
+    if (methodName == 'ack') {
+	  return this[methodName].apply(this, e.data);
+	}
     // otherwise we need to ack the sender
+	let ackId = e.data.shift();
+	let returnVal = this[methodName].apply(this, e.data);
     if (returnVal instanceof Promise) {
       returnVal.then(val => {
         this.context.postMessage(['ack', ackId, val]);
@@ -84,14 +100,14 @@ class Actor {
    * to postMessage calls on the peer
    */
   buildPeerProxy(methods) {
-    let peer = {};
+    let peer = {}, self = this;
     let handlers = {
       get: (target, property, receiver) => {
         console.log("called " + property);
         if (methods.indexOf(property) !== -1) {
-          return () => {
-            let args = Array.prototype.slice.apply(arguments, 0, arguments.length);
-            return this.send(property, args)
+          return function() {
+            let args = Array.prototype.slice.call(arguments);
+            return self.send(property, args)
           }
         }
         return undefined;
@@ -104,39 +120,51 @@ class Actor {
   initPeerAcks(methods) {
     // init the peerMethodAck's
     methods.forEach(methodName => {
-      this.peerMethodAckCounters[methodName] = 0;
-      this.peerMethodAckPromises[methodName] = {};
+      this._peerMethodAckCounters[methodName] = 0;
+      this._peerMethodAckPromises[methodName] = {};
     });
   }
 
+  getMyMethods() {
+	var methods = [],
+	self = this;
+	do {
+	  methods = methods.concat(Object.getOwnPropertyNames(self));
+	  self = Object.getPrototypeOf(self);
+	} while (self instanceof Actor);
+	methods = methods.filter(k => {
+	  return this.blacklist.indexOf(k) === -1 && k.indexOf('_') !== 0;
+    });
+	console.log('getMyMethods ', methods);
+	return methods;
+  }
+
   /**
-   * Initialize communication with the peer for the first time
+   * Receive the 'initPeer' message to setup our model of what we can call
    * @param methods {Array<string>} list of valid peer methods to call
    * @returns {Array<string>} list of valid callable methods on this
    */
   initPeer(methods) {
+	console.log('initPeer');
     this.peer = this.buildPeerProxy(methods);
     // only one call to initPeer allowed.
     this.blacklist.push('initPeer');
     this.isInitialized = true;
     // return our methods to sender
-    let myMethods = Object.keys(this).filter(k => {
-      return this.blacklist.indexOf(k) === -1;
-    });
-    return myMethods;
+    return this.getMyMethods();
   }
 }
 
 class WorkerActor extends Actor {
   constructor(script) {
     let worker = new Worker(script);
-    super.constructor(worker)
-    this.blacklist.concat(["terminate", "close"])
+    super(worker)
+    this.blacklist.concat(["terminate", "close"]);
   }
-  terminate {
+  terminate () {
     this.context.terminate();
   }
-  close {
+  close () {
     this.context.close()
   }
 }

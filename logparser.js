@@ -1,3 +1,5 @@
+self.importScripts('actor.js');
+
 var tokenMap = {}; // id => { count: <int>, occursWith: [<int>...] }
 var tokenToId = {}; // string => int
 var idToToken = {}; // (int)string => string
@@ -7,6 +9,8 @@ var startTime = null;
 var endTime = null;
 var whitespaceRegExp = new RegExp(/\s+/);
 console.log("worker ", this);
+
+
 /**
  * Create an id for token & its corresponding entries
  * in tokenMap, tokenToId and idToToken indexes
@@ -143,7 +147,7 @@ function eventsHistogram(width) {
   return histogram;
 }
 
-function init(content) {
+function getFile(content) {
   console.log('parsing content');
   // TODO account for multiline JSON
   rawText = content.split("\n");
@@ -158,21 +162,60 @@ function init(content) {
   postMessage(['processed', tokenMap, tokenToId, startTime, endTime])
 }
 
-var LogParserCommands = {
-  init: init,
-  eventsHistogram: eventsHistogram
-}
+class LogParserActor extends Actor {
+  downloadFile(filename) {
+	var promise = new Promise((resolve, reject) => {
+	  var request = new XMLHttpRequest();
+	  request.open('GET', '/data/' + filename, true);
+	  request.onload = function() {
+		if (request.status >= 200 && request.status < 400) {
+		  var contents = request.responseText;
+		  resolve(contents);
+		} else {
+		  reject(request.status, null);
+		}
+	  };
+	  request.onerror = function(err) {
+		reject(err, null);
+	  };
 
-onmessage = function(event){
-  console.warn(event);
-  if (!Array.isArray(event.data)) {
-    console.error("Unknown message ", event);
-    return;
+	  request.send();
+	});
+	return promise;
   }
-  let command = event.data.shift();
-
-  console.log(LogParserCommands[command]);
-  if (typeof LogParserCommands[command] === 'function'){
-    LogParserCommands[command].apply(null, event.data);
+  getFile(content) {
+	console.log('parsing content');
+	// TODO account for multiline JSON
+	rawText = content.split("\n");
+	console.log(rawText.length)
+	for (var i = 0; i < rawText.length; i++) {
+      var tokens = rawText[i].split(whitespaceRegExp);
+      tokens.splice(0,3);
+      countOccurences(tokens);
+	}
+	sumOccursWithCount();
+	eventsHistogram();
+	return [tokenMap, tokenToId, startTime, endTime];
   }
 }
+var actor = new LogParserActor(this);
+
+// var LogParserCommands = {
+//   init: init,
+//   eventsHistogram: eventsHistogram
+// }
+
+
+// onmessage = function(event){
+//   console.warn(event);
+//   if (!Array.isArray(event.data)) {
+//     console.error("Unknown message ", event);
+//     return;
+//   }
+//   let command = event.data.shift();
+
+//   console.log(LogParserCommands[command]);
+//   if (typeof LogParserCommands[command] === 'function'){
+//     LogParserCommands[command].apply(null, event.data);
+//   }
+// }

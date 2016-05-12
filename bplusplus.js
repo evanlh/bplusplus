@@ -3,17 +3,32 @@ const viewport = document.getElementById('name');
 // class WorkerActor extends Actor {
 //   constructor(script) {
 //     this.worker = new Worker(script);
-    
 //   }
 // }
 
+/* UI ideas
+http://zippyui.com/react-datagrid/#/examples/multiple-selection
+http://adazzle.github.io/react-data-grid/examples.html#/row-select
+http://facebook.github.io/fixed-data-table/
+
+https://github.com/mbostock/d3/wiki/Zoom-Behavior
+
+*/
+
+// models the methods the Worker may call on us
+class ForemanActor extends WorkerActor {
+}
+
 var BplusPlusController = {
   _worker: null,
-  initWorker: function(logfile) {
-    console.log(" logfile " , logfile.substring(0, 400));
-    this._worker = new Worker("logparser.js");
-    this._worker.postMessage(['init', logfile]);
-    this._worker.onmessage = this.onWorkerMessage.bind(this);
+  initWorker: function() {
+    // console.log(" logfile " , logfile.substring(0, 400));
+    // this._worker = new Worker("logparser.js");
+    // this._worker.postMessage(['init', logfile]);
+      // this._worker.onmessage = this.onWorkerMessage.bind(this);
+      this._worker = new ForemanActor("logparser.js");
+      console.log(this._worker);
+      return this._worker.start();
   },
   jsonToWidget: function(json, maxKeys) {
     maxKeys = maxKeys || 100;
@@ -22,24 +37,9 @@ var BplusPlusController = {
     console.warn(e);
   },
   fetch: function (filename) {
-    var promise = new Promise((resolve, reject) => {
-      var request = new XMLHttpRequest();
-      request.open('GET', '/data/' + filename, true);
-      request.onload = function() {
-        if (request.status >= 200 && request.status < 400) {
-          var contents = request.responseText;
-          resolve(contents);
-        } else {
-          reject(request.status, null);
-        }
-      };
-      request.onerror = function(err) {
-        reject(err, null);
-      };
-
-      request.send();
-    });
-    return promise;
+      return this._worker.peer.downloadFile('bplus.20160428-force-gc-attempt.log').then((file) => {
+          console.log('file ', file.substring(0,100));
+      });
   },
   init: function() {
     console.log("loading file...");
@@ -47,11 +47,16 @@ var BplusPlusController = {
       alert("I can't work under these conditions! Please use a real browser.");
       return;
     }
-    this.fetch('system.log').then((contents) => {
-      this.initWorker(contents);
+    
+    var p = this.initWorker();
+	console.log(p);
+    p.then((worker) => {
+	  console.log(worker);
+      return this.fetch('bplus.20160428-force-gc-attempt.log');
     })
     .catch((err) => {
-      console.error("Couldn't open logfile ", err);
+      alert("Couldn't open logfile ");
+	  console.error(err);
     })
   }
 }
