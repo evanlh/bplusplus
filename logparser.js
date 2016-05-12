@@ -4,6 +4,7 @@ var tokenMap = {}; // id => { count: <int>, occursWith: [<int>...] }
 var tokenToId = {}; // string => int
 var idToToken = {}; // (int)string => string
 var idCounter = 1;
+var rawContent = null;
 var rawText = [];
 var startTime = null;
 var endTime = null;
@@ -86,6 +87,7 @@ function entropy(proportions) {
 };
 
 var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov','Dec']
+var MONTHS = months.map(function(month) { return month.toUpperCase(); });
 function convertToTime(time){
   var d = new Date();
   console.log(time);
@@ -104,16 +106,21 @@ function convertToTime(time){
  */
 function eventsHistogram(width) {
   width = width || 200;
-  var hoursMinutesSecondsRE = /^[a-zA-Z]{3}\s+[0-9]+\s+([0-9]+):([0-9]+):([0-9]+)/;
+  //var hoursMinutesSecondsRE = /^[a-zA-Z]{3}\s+[0-9]+\s+([0-9]+):([0-9]+):([0-9]+)/;
+  var hoursMinutesSecondsRE = /^[0-9]{2}[A-Z]{3}[0-9]{4}_([0-9]+):([0-9]+):([0-9]+)/;
+  var dayMonthYear = /^([0-9]{2})([A-Z]{3})([0-9]{4})_/;
   var timeArray = [];
   var match;
   if (!rawText.length) return [];
   // get the base unixtime
-  var startDate = new Date(rawText[0].substring(0,15));
-  startDate.setYear(2016);
-  startDate.setHours(0);
-  startDate.setMinutes(0);
-  startDate.setSeconds(0);
+  if (match = dayMonthYear.exec(rawText[0])) {
+	console.log(match[3], MONTHS.indexOf(match[2]), match[1]);
+	var startDate = new Date(parseInt(match[3]), MONTHS.indexOf(match[2]), parseInt(match[1]));
+	console.log(startDate);
+  }
+  else {
+	throw new Error('Couldnt parse files dates');
+  }
   var baseUnixTime = startDate.getTime();
 
   // make an array of unix timestamps corresponding to file line numbers
@@ -122,12 +129,20 @@ function eventsHistogram(width) {
     if ((match = hoursMinutesSecondsRE.exec(rawText[i]))) {
       timeArray.push(
         baseUnixTime +
-        parseInt(match[1])*60*60+ // hours
-        parseInt(match[2])*60+ // minutes
-        parseInt(match[3]) // seconds
+        parseInt(match[1])*60*60*1000+ // hours
+        parseInt(match[2])*60*1000+ // minutes
+        parseInt(match[3])*1000 // seconds
       )
+	  if (timeArray.length < 100) {
+	  console.log(match);
+	  console.log(timeArray[timeArray.length - 1]);
+	  }
     }
   }
+
+  // get the start & end times
+  var startTime = new Date(timeArray[0]);
+  var endTime = new Date(timeArray[timeArray.length - 1]);
 
   // aggregate the event count per interval
   var interval = (timeArray[timeArray.length - 1] - timeArray[0])/width;
@@ -143,24 +158,12 @@ function eventsHistogram(width) {
     }
     eventCount++;
   }
+  histogram.startTime = startTime;
+  histogram.endTime = endTime;
   console.log(histogram);
   return histogram;
 }
 
-function getFile(content) {
-  console.log('parsing content');
-  // TODO account for multiline JSON
-  rawText = content.split("\n");
-  console.log(rawText.length)
-  for (var i = 0; i < rawText.length; i++) {
-    var tokens = rawText[i].split(whitespaceRegExp);
-    tokens.splice(0,3);
-    countOccurences(tokens);
-  }
-  sumOccursWithCount();
-  eventsHistogram();
-  postMessage(['processed', tokenMap, tokenToId, startTime, endTime])
-}
 
 class LogParserActor extends Actor {
   downloadFile(filename) {
@@ -170,7 +173,8 @@ class LogParserActor extends Actor {
 	  request.onload = function() {
 		if (request.status >= 200 && request.status < 400) {
 		  var contents = request.responseText;
-		  resolve(contents);
+		  rawContent = contents;
+		  resolve("Success: " + request.status);
 		} else {
 		  reject(request.status, null);
 		}
@@ -183,19 +187,18 @@ class LogParserActor extends Actor {
 	});
 	return promise;
   }
-  getFile(content) {
+  getFile() {
 	console.log('parsing content');
 	// TODO account for multiline JSON
-	rawText = content.split("\n");
-	console.log(rawText.length)
-	for (var i = 0; i < rawText.length; i++) {
-      var tokens = rawText[i].split(whitespaceRegExp);
-      tokens.splice(0,3);
-      countOccurences(tokens);
-	}
-	sumOccursWithCount();
-	eventsHistogram();
-	return [tokenMap, tokenToId, startTime, endTime];
+	rawText = rawContent.split("\n");
+	// for (var i = 0; i < rawText.length; i++) {
+    //   var tokens = rawText[i].split(whitespaceRegExp);
+    //   tokens.splice(0,3);
+    //   countOccurences(tokens);
+	// }
+	// sumOccursWithCount();
+	var histogram = eventsHistogram();
+	return [histogram, startTime, endTime];
   }
 }
 var actor = new LogParserActor(this);

@@ -22,10 +22,6 @@ class ForemanActor extends WorkerActor {
 var BplusPlusController = {
   _worker: null,
   initWorker: function() {
-    // console.log(" logfile " , logfile.substring(0, 400));
-    // this._worker = new Worker("logparser.js");
-    // this._worker.postMessage(['init', logfile]);
-      // this._worker.onmessage = this.onWorkerMessage.bind(this);
       this._worker = new ForemanActor("logparser.js");
       console.log(this._worker);
       return this._worker.start();
@@ -38,7 +34,10 @@ var BplusPlusController = {
   },
   fetch: function (filename) {
       return this._worker.peer.downloadFile('bplus.20160428-force-gc-attempt.log').then((file) => {
-          console.log('file ', file.substring(0,100));
+        console.log('file ', file.substring(0,100));
+		return this._worker.peer.getFile().then((stats) => {
+		  console.log(stats);
+		})
       });
   },
   init: function() {
@@ -48,9 +47,8 @@ var BplusPlusController = {
       return;
     }
     
-    var p = this.initWorker();
-	console.log(p);
-    p.then((worker) => {
+    this.initWorker()
+	.then((worker) => {
 	  console.log(worker);
       return this.fetch('bplus.20160428-force-gc-attempt.log');
     })
