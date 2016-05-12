@@ -1,18 +1,10 @@
 const viewport = document.getElementById('name');
-//import actor;
-// class WorkerActor extends Actor {
-//   constructor(script) {
-//     this.worker = new Worker(script);
-//   }
-// }
-
 /* UI ideas
 http://zippyui.com/react-datagrid/#/examples/multiple-selection
 http://adazzle.github.io/react-data-grid/examples.html#/row-select
 http://facebook.github.io/fixed-data-table/
 
 https://github.com/mbostock/d3/wiki/Zoom-Behavior
-
 */
 
 // models the methods the Worker may call on us
@@ -35,7 +27,7 @@ var BplusPlusController = {
   fetch: function (filename) {
       return this._worker.peer.downloadFile('bplus.20160428-force-gc-attempt.log').then((file) => {
         console.log('file ', file.substring(0,100));
-		return this._worker.peer.getFile().then((stats) => {
+		return this._worker.peer.getHistogram(1000).then((stats) => {
 		  console.log(stats);
 		})
       });
@@ -46,7 +38,6 @@ var BplusPlusController = {
       alert("I can't work under these conditions! Please use a real browser.");
       return;
     }
-    
     this.initWorker()
 	.then((worker) => {
 	  console.log(worker);

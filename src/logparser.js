@@ -187,7 +187,7 @@ class LogParserActor extends Actor {
 	});
 	return promise;
   }
-  getFile() {
+  getHistogram(width) {
 	console.log('parsing content');
 	// TODO account for multiline JSON
 	rawText = rawContent.split("\n");
@@ -197,7 +197,7 @@ class LogParserActor extends Actor {
     //   countOccurences(tokens);
 	// }
 	// sumOccursWithCount();
-	var histogram = eventsHistogram();
+	var histogram = eventsHistogram(width);
 	return [histogram, startTime, endTime];
   }
 }

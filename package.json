@@ -1,0 +1,35 @@
+{
+  "name": "bplusplus",
+  "version": "1.0.0",
+  "description": "log searcher",
+  "main": "bplusplus.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evanlh/bplusplus.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/evanlh/bplusplus/issues"
+  },
+  "homepage": "https://github.com/evanlh/bplusplus#readme",
+  "browserify": {
+    "transform": [
+      [
+        "reactify",
+        {
+          "es6": true
+        }
+      ]
+    ]
+  },
+  "dependencies": {
+    "d3": "^3.5.17",
+    "react": "^15.0.2",
+    "react-dom": "^15.0.2",
+    "reactify": "^1.1.1"
+  }
+}
